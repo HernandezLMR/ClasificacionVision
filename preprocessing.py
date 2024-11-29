@@ -1,4 +1,5 @@
 import os
+from PIL import Image
 from skimage import io, color
 from skimage.feature import (
     canny,
@@ -16,12 +17,17 @@ import pandas as pd
 from tqdm import tqdm
 
 
-def extract_features(image_path: str):
-    image = io.imread(image_path)
-    if len(image.shape) == 3:  # Convertir a escala de grises si es necesario
-        gray_image = color.rgb2gray(image)
-    else:
-        gray_image = image
+def compress_image(image_path, output_size=(256, 256)):
+    """Redimensionar y convertir imagen a escala de grises."""
+    with Image.open(image_path) as img:
+        img = img.convert("L")  # Convertir a escala de grises
+        img = img.resize(output_size)  # Redimensionar la imagen
+        return np.array(img)  # Devolver como arreglo de NumPy
+
+
+def extract_features(image_array):
+    """Extraer características de una imagen ya procesada."""
+    gray_image = image_array
 
     # Características 1: Bordes (Canny)
     edges = canny(gray_image, sigma=1.0)
@@ -103,11 +109,10 @@ def extract_features(image_path: str):
     return feature_vector
 
 
-def process_parent_folder(parent_folder):
+def process_parent_folder(parent_folder, output_size=(256, 256)):
     feature_matrix = []
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
-    # Recorrer cada subfolder dentro del folder padre
     for class_folder in tqdm(os.listdir(parent_folder), desc="Processing folders"):
         folder_path = os.path.join(parent_folder, class_folder)
         if os.path.isdir(folder_path):  # Solo procesar carpetas
@@ -121,7 +126,9 @@ def process_parent_folder(parent_folder):
             ):
                 image_path = os.path.join(folder_path, image_file)
                 try:
-                    features = extract_features(image_path)
+                    # Comprimir y procesar la imagen
+                    compressed_image = compress_image(image_path, output_size)
+                    features = extract_features(compressed_image)
                     # Agregar la clase como última columna
                     features_with_class = np.append(features, class_folder)
                     feature_matrix.append(features_with_class)
@@ -133,7 +140,7 @@ def process_parent_folder(parent_folder):
 
 if __name__ == "__main__":
     parent_folder = "Wonders/Wonders of World"  # Cambia esta ruta al folder padre
-    features = process_parent_folder(parent_folder)
+    features = process_parent_folder(parent_folder, output_size=(256, 256))
 
     # Convertir a DataFrame y guardar como CSV
     columns = [f"feature_{i}" for i in range(features.shape[1] - 1)] + ["class"]
