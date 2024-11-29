@@ -1,3 +1,4 @@
+import os
 from skimage import io, color
 from skimage.feature import (
     canny,
@@ -11,7 +12,8 @@ from skimage.feature import (
 )
 from numpy.fft import fft2, fftshift
 import numpy as np
-import os
+import pandas as pd
+from tqdm import tqdm
 
 
 def extract_features(image_path: str):
@@ -21,9 +23,11 @@ def extract_features(image_path: str):
     else:
         gray_image = image
 
-    # Características como en el código original
+    # Características 1: Bordes (Canny)
     edges = canny(gray_image, sigma=1.0)
     canny_count = np.sum(edges)
+
+    # Características 2: HOG (Histogram of Oriented Gradients)
     hog_features, _ = hog(
         gray_image,
         pixels_per_cell=(8, 8),
@@ -32,6 +36,8 @@ def extract_features(image_path: str):
         block_norm="L2-Hys",
     )
     hog_mean = np.mean(hog_features)
+
+    # Características 3: LBP (Local Binary Patterns)
     radius = 3
     n_points = 8 * radius
     lbp = local_binary_pattern(gray_image, n_points, radius, method="uniform")
@@ -39,6 +45,8 @@ def extract_features(image_path: str):
         lbp.ravel(), bins=np.arange(0, n_points + 3), range=(0, n_points + 2)
     )
     lbp_hist_normalized = lbp_hist / np.sum(lbp_hist)
+
+    # Características 4: GLCM (Gray-Level Co-occurrence Matrix)
     glcm = graycomatrix(
         (gray_image * 255).astype(np.uint8),
         distances=[1],
@@ -51,14 +59,21 @@ def extract_features(image_path: str):
     homogeneity = graycoprops(glcm, "homogeneity")[0, 0]
     correlation = graycoprops(glcm, "correlation")[0, 0]
     energy = graycoprops(glcm, "energy")[0, 0]
+
+    # Características 5: Harris (Esquinas)
     corners = corner_harris(gray_image)
     harris_peaks = corner_peaks(corners, min_distance=5)
     harris_count = len(harris_peaks)
+
+    # Características 6: Detección de blobs
     blobs = blob_log(gray_image, max_sigma=30, num_sigma=10, threshold=0.1)
     blob_count = len(blobs)
+
+    # Características 7: FFT (Transformada de Fourier)
     fft_image = fftshift(fft2(gray_image))
     fft_energy = np.log(1 + np.abs(fft_image)).mean()
 
+    # Características 8: BRIEF (Binary Robust Independent Elementary Features)
     from skimage.feature import BRIEF
 
     brief_extractor = BRIEF()
@@ -69,6 +84,7 @@ def extract_features(image_path: str):
         else 0
     )
 
+    # Crear un vector de características
     feature_vector = np.array(
         [
             canny_count,
@@ -87,31 +103,42 @@ def extract_features(image_path: str):
     return feature_vector
 
 
-def process_folder(base_path):
+def process_parent_folder(parent_folder):
     feature_matrix = []
-    labels = []
     valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
-    for class_folder in os.listdir(base_path):
-        folder_path = os.path.join(base_path, class_folder)
-        if os.path.isdir(folder_path):
-            for image_file in os.listdir(folder_path):
-                if os.path.splitext(image_file)[1].lower() in valid_extensions:
-                    image_path = os.path.join(folder_path, image_file)
-                    try:
-                        features = extract_features(image_path)
-                        feature_matrix.append(features)
-                        labels.append(class_folder)
-                    except Exception as e:
-                        with open("error_log.txt", "a") as log_file:
-                            log_file.write(f"Error processing {image_path}: {e}\n")
-    return np.array(feature_matrix), np.array(labels)
+
+    # Recorrer cada subfolder dentro del folder padre
+    for class_folder in tqdm(os.listdir(parent_folder), desc="Processing folders"):
+        folder_path = os.path.join(parent_folder, class_folder)
+        if os.path.isdir(folder_path):  # Solo procesar carpetas
+            image_files = [
+                f
+                for f in os.listdir(folder_path)
+                if os.path.splitext(f)[1].lower() in valid_extensions
+            ]
+            for image_file in tqdm(
+                image_files, desc=f"Processing images in {class_folder}", leave=False
+            ):
+                image_path = os.path.join(folder_path, image_file)
+                try:
+                    features = extract_features(image_path)
+                    # Agregar la clase como última columna
+                    features_with_class = np.append(features, class_folder)
+                    feature_matrix.append(features_with_class)
+                except Exception as e:
+                    print(f"Error processing {image_path}: {e}")
+
+    return np.array(feature_matrix)
 
 
 if __name__ == "__main__":
-    base_path = "Wonders/Wonders of World"
-    features, labels = process_folder(base_path)
+    parent_folder = "Wonders/Wonders of World"  # Cambia esta ruta al folder padre
+    features = process_parent_folder(parent_folder)
 
-    np.save("features.npy", features)
-    np.save("labels.npy", labels)
+    # Convertir a DataFrame y guardar como CSV
+    columns = [f"feature_{i}" for i in range(features.shape[1] - 1)] + ["class"]
+    df = pd.DataFrame(features, columns=columns)
+    output_csv = "features_with_classes.csv"
+    df.to_csv(output_csv, index=False)
 
-    print("Features and labels saved successfully!")
+    print(f"Features saved to {output_csv}")
