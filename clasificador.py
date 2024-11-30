@@ -12,11 +12,8 @@ class Classifier:
     def fit(self, data_X):
         npdata = data_X.to_numpy()
         for i in range(self.labels.shape[0]):
-            for j in range(int(np.shape(npdata)[0]/4)): #Assumes data is ordered and in the same format used
-                if self.centroids[i].size == 0:
-                    self.centroids[i] = npdata[j]
-                else:
-                    self.centroids[i] = np.add(self.centroids[i], npdata[j])
+            for j in range(int(np.shape(npdata)[0]/4)*i,int(np.shape(npdata)[0]/4)*(i+1)): #Assumes data is ordered and in the same format used
+                self.centroids[i] = np.add(self.centroids[i], npdata[j])
             self.centroids[i] = self.centroids[i]/int(np.shape(npdata)[0]/4)
     def predict(self,  data_X, data_Y):
         errors = 0      #Intialize performance metrics
