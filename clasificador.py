@@ -4,8 +4,8 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class Classifier:
-    def __init__(self, labels):
-        self.centroids = np.array([np.zeros(36) for _ in range(4)])#Initialization is static for convenience, can be made dynamic if necesary
+    def __init__(self, labels, feature_count):
+        self.centroids = np.zeros((len(labels.unique()), feature_count))
         self.labels = labels.unique()
         self.class_mapping = {cls: i for i, cls in enumerate(self.labels)} #Dictionary to make logging confusion matrix easier
     
@@ -34,7 +34,7 @@ class Classifier:
             if predicted_label != real_label:
                 errors += 1
         #Show resuts
-        performance = errors/np.shape(npdata)[0]
+        performance = 1 - errors/np.shape(npdata)[0]
         print(f"Accuracy {performance*100}%")
         fig, ax = plt.subplots(figsize=(8, 6))
         im = ax.imshow(c_Matrix, interpolation='nearest', cmap='Blues')
@@ -66,10 +66,13 @@ class Classifier:
         
 if __name__ == '__main__':
     df = pd.read_csv("features_with_classes.csv")
+    #df = pd.read_csv("pca_features.csv")
+    #df = pd.read_csv("tsne_features.csv")
     x = df.drop(columns='class')
     y = df['class']
     X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2, stratify=y, random_state=42)
-    model = Classifier(y_train)
+    feature_count = x.shape[1]  
+    model = Classifier(y_train, feature_count)
     model.fit(X_train)
     model.predict(X_test,y_train)
     
